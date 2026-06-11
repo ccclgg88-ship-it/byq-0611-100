@@ -6,7 +6,7 @@ import DimensionSlider from './DimensionSlider.vue'
 import TrendChart from './TrendChart.vue'
 import AdvicePanel from './AdvicePanel.vue'
 import ImportExportPanel from './ImportExportPanel.vue'
-import { DIMENSION_ORDER, MIN_SAVE_DIMENSIONS, DIMENSION_NAMES } from '@/constants'
+import { DIMENSION_ORDER, MIN_SAVE_DIMENSIONS, DIMENSION_NAMES, DIMENSION_COLORS } from '@/constants'
 import type { DimensionKey } from '@/types'
 import { today, subtractDays } from '@/utils/date'
 import html2canvas from 'html2canvas'
@@ -43,6 +43,28 @@ watch(() => store.activeDate, (v) => {
   activeDateInput.value = v
 })
 
+const todayAverage = computed(() => {
+  if (!store.todayRecord) return 0
+  const total = DIMENSION_ORDER.reduce((s, k) => s + (store.todayRecord![k]?.score || 0), 0)
+  return Math.round(total / 8 * 10) / 10
+})
+
+const bestDimensionName = computed(() => {
+  const d = store.mergedDraftWithSaved
+  let best: { k: DimensionKey; s: number } | null = null
+  DIMENSION_ORDER.forEach((k: DimensionKey) => {
+    const s = d[k]?.score || 0
+    if (s > 0 && (!best || s > (best as { k: DimensionKey; s: number }).s)) {
+      best = { k, s }
+    }
+  })
+  return best ? DIMENSION_NAMES[(best as { k: DimensionKey; s: number }).k] : '--'
+})
+
+const dimColors = DIMENSION_COLORS
+const dimNames = DIMENSION_NAMES
+const dimOrder = DIMENSION_ORDER
+
 function handleDateChange(e: Event) {
   const target = e.target as HTMLInputElement
   if (target.value) store.setActiveDate(target.value)
@@ -61,11 +83,18 @@ function handleSelectDimension(key: DimensionKey) {
 }
 
 function handleSave() {
-  const res = store.saveTodayRecord()
-  if (res.ok) {
-    showMessage('今日记录已保存 ✓', 'success')
-  } else {
-    showMessage(res.error || '保存失败', 'error')
+  try {
+    console.log('[Save] 触发保存，当前维度数量:', store.filledDimensionsCount, ', canSave:', store.canSave)
+    console.log('[Save] currentDraft:', JSON.stringify(store.currentDraft))
+    const res = store.saveTodayRecord()
+    if (res.ok) {
+      showMessage('今日记录已保存 ✓', 'success')
+    } else {
+      showMessage(res.error || '保存失败', 'error')
+    }
+  } catch (e) {
+    console.error('[Save] 保存异常:', e)
+    showMessage('保存异常：' + (e as Error).message, 'error')
   }
 }
 
@@ -256,6 +285,7 @@ onMounted(() => {
           <button
             class="btn"
             :disabled="!store.canSave"
+            :title="store.canSave ? '保存今日修行记录' : `还需填写 ${Math.max(0, MIN_SAVE_DIMENSIONS - store.filledDimensionsCount)} 个维度才能保存`"
             @click="handleSave"
           >
             {{ store.todayRecord ? '💾 更新保存' : '💾 保存今日' }}
@@ -280,7 +310,7 @@ onMounted(() => {
           </div>
           <div class="sliders-grid">
             <DimensionSlider
-              v-for="k in DIMENSION_ORDER"
+              v-for="k in dimOrder"
               :key="k"
               :dimension="k"
               :score="dimensionValues[k].score"
@@ -294,31 +324,72 @@ onMounted(() => {
           </div>
         </div>
 
-        <div class="card" style="margin-bottom: 20px;">
-          <h3 class="card-title">📈 近 30 天趋势 · {{ DIMENSION_NAMES[store.selectedDimension] }}</h3>
+        <div class="card trend-card" style="margin-bottom: 20px;">
+          <h3 class="card-title">📈 修行趋势分析 · {{ dimNames[store.selectedDimension] }}</h3>
           <TrendChart
             :dates="store.trendData.dates"
             :scores="store.trendData.scores"
+            :ma7="store.trendData.ma7"
+            :ma30="store.trendData.ma30"
             :selected-dimension="store.selectedDimension"
             :week-average="store.weekAverage[store.selectedDimension]"
+            :trend-days="store.trendDays"
             @change-dimension="store.setSelectedDimension"
+            @change-trend-days="store.setTrendDays"
           />
         </div>
       </div>
 
       <div class="right-col">
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card radar-card" style="margin-bottom: 20px;">
           <h3 class="card-title">🎯 八维分布雷达图</h3>
+          <div class="radar-summary-row">
+            <div class="summary-item">
+              <span class="sum-label">今日总分</span>
+              <span class="sum-value" style="color:var(--color-primary)">{{ todayAverage }}</span>
+            </div>
+            <div class="summary-item">
+              <span class="sum-label">周总均分</span>
+              <span class="sum-value" style="color:var(--color-info)">{{ store.weekAverageOverall || '--' }}</span>
+            </div>
+            <div class="summary-item">
+              <span class="sum-label">最佳维度</span>
+              <span class="sum-value" style="color:var(--color-success)">{{ bestDimensionName }}</span>
+            </div>
+          </div>
           <RadarChart
             :saved-data="savedRecordData as any"
             :draft-data="draftData as any"
             :week-average="store.weekAverage"
             :highlight-key="store.selectedDimension"
           />
-          <div style="text-align:center;font-size:12px;color:var(--color-text-muted);margin-top:-8px">
-            <span style="display:inline-block;width:10px;height:2px;background:#8e44ad;vertical-align:middle;margin-right:4px"></span>已保存
-            <span style="display:inline-block;width:10px;height:2px;border-top:2px dashed #2c3e50;vertical-align:middle;margin:0 4px 0 12px"></span>未保存
-            <span style="display:inline-block;width:10px;height:2px;border-top:2px dashed #95a5a6;vertical-align:middle;margin:0 4px 0 12px"></span>周均分
+          <div style="text-align:center;font-size:12px;color:var(--color-text-muted);margin-top:4px;padding:8px;background:var(--color-bg);border-radius:var(--radius-sm)">
+            <span style="display:inline-block;margin:0 6px"><span style="display:inline-block;width:12px;height:2px;background:#8e44ad;vertical-align:middle;margin-right:4px"></span>已保存</span>
+            <span style="display:inline-block;margin:0 6px"><span style="display:inline-block;width:12px;height:2px;border-top:2px dashed #2c3e50;vertical-align:middle;margin-right:4px"></span>未保存</span>
+            <span style="display:inline-block;margin:0 6px"><span style="display:inline-block;width:12px;height:2px;border-top:2px dashed #95a5a6;vertical-align:middle;margin-right:4px"></span>周均分</span>
+          </div>
+        </div>
+
+        <div class="card overview-card" style="margin-bottom: 20px;">
+          <h3 class="card-title">📊 八维一览</h3>
+          <div class="dim-overview-list">
+            <div
+              v-for="k in dimOrder"
+              :key="k"
+              class="dim-overview-item"
+              :class="{ active: store.selectedDimension === k }"
+              :style="{ '--dim-color': dimColors[k] }"
+              @click="handleSelectDimension(k)"
+            >
+              <div class="ov-left">
+                <span class="ov-dot"></span>
+                <span class="ov-name">{{ dimNames[k] }}</span>
+              </div>
+              <div class="ov-bar-wrap">
+                <div class="ov-bar" :style="{ width: `${dimensionValues[k].score}%` }"></div>
+              </div>
+              <span class="ov-score" :class="{ zero: dimensionValues[k].score === 0 }">{{ dimensionValues[k].score }}</span>
+            </div>
           </div>
         </div>
 
@@ -362,17 +433,16 @@ onMounted(() => {
           </div>
           <div class="h-scores">
             <span
-              v-for="k in DIMENSION_ORDER"
+              v-for="k in dimOrder"
               :key="k"
               class="h-score-chip"
-              :title="DIMENSION_NAMES[k]"
+              :title="dimNames[k]"
               :style="{
                 background: `var(--color-bg)`,
-                color: store.records[date][k].score > 0 ? '#333' : '#ccc',
-                borderLeft: `3px solid ${DIMENSION_NAMES[k] ? '' : ''}`
+                color: store.records[date][k].score > 0 ? '#333' : '#ccc'
               }"
             >
-              {{ DIMENSION_NAMES[k] }}:{{ store.records[date][k].score }}
+              {{ dimNames[k] }}:{{ store.records[date][k].score }}
             </span>
           </div>
           <button
@@ -470,14 +540,134 @@ onMounted(() => {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  gap: 20px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 24px;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  }
+}
+
+@media (max-width: 1100px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.radar-card {
+  overflow: hidden;
+}
+
+.radar-summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px 4px 14px;
+  border-bottom: 1px dashed var(--color-border);
+  margin-bottom: 8px;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+}
+
+.sum-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.sum-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+
+.overview-card {
+  overflow: hidden;
+}
+
+.dim-overview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dim-overview-item {
+  display: grid;
+  grid-template-columns: 110px 1fr 40px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--color-bg);
+}
+
+.dim-overview-item:hover {
+  background: rgba(184, 134, 11, 0.08);
+  transform: translateX(2px);
+}
+
+.dim-overview-item.active {
+  background: color-mix(in srgb, var(--dim-color) 15%, var(--color-bg));
+  box-shadow: inset 3px 0 0 var(--dim-color);
+}
+
+.ov-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.ov-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dim-color);
+  flex-shrink: 0;
+}
+
+.ov-name {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.ov-bar-wrap {
+  height: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ov-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--dim-color), color-mix(in srgb, var(--dim-color) 73%, transparent));
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.ov-score {
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'SF Mono', Menlo, monospace;
+  color: var(--dim-color);
+}
+
+.ov-score.zero {
+  color: #bbb;
+  font-weight: 500;
 }
 
 .sliders-card {

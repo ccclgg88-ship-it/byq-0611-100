@@ -43,6 +43,7 @@ export const useEightfoldStore = defineStore('eightfold', () => {
   const hasCompletedOnboarding = ref(false)
   const activeDate = ref<string>(today())
   const initialized = ref(false)
+  const trendDays = ref<7 | 30 | 90>(30)
 
   const currentDate = computed(() => activeDate.value)
 
@@ -108,16 +109,42 @@ export const useEightfoldStore = defineStore('eightfold', () => {
     return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
   })
 
-  const trendData = computed<{ dates: string[]; scores: (number | null)[] }>(() => {
-    const dates = getRecentNDays(30, currentDate.value)
+  const trendData = computed<{
+    dates: string[];
+    scores: (number | null)[];
+    ma7: (number | null)[];
+    ma30: (number | null)[];
+  }>(() => {
+    const days = trendDays.value
+    const dates = getRecentNDays(days, currentDate.value)
     const key = selectedDimension.value
     const scores = dates.map(d => {
       const r = records.value[d]
       const s = r?.[key]?.score
       return (s !== undefined && s > 0) ? s : null
     })
-    return { dates, scores }
+
+    const calcMA = (window: number): (number | null)[] => {
+      return scores.map((_, idx) => {
+        const start = Math.max(0, idx - window + 1)
+        const slice = scores.slice(start, idx + 1)
+        const valid = slice.filter(x => x !== null) as number[]
+        if (valid.length < Math.min(3, window)) return null
+        return Math.round(valid.reduce((a, b) => a + b, 0) / valid.length)
+      })
+    }
+
+    return {
+      dates,
+      scores,
+      ma7: days >= 7 ? calcMA(7) : [],
+      ma30: days >= 30 ? calcMA(30) : []
+    }
   })
+
+  function setTrendDays(days: 7 | 30 | 90) {
+    trendDays.value = days
+  }
 
   function init() {
     try {
@@ -375,6 +402,7 @@ export const useEightfoldStore = defineStore('eightfold', () => {
     selectedDimension,
     hasCompletedOnboarding,
     activeDate,
+    trendDays,
     currentDate,
     todayRecord,
     mergedDraftWithSaved,
@@ -391,6 +419,7 @@ export const useEightfoldStore = defineStore('eightfold', () => {
     revertDraft,
     setActiveDate,
     setSelectedDimension,
+    setTrendDays,
     completeOnboarding,
     toggleReminder,
     updateSuggestedReminders,
