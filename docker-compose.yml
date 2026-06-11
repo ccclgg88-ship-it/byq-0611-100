@@ -1,0 +1,17 @@
+version: '3.9'
+
+services:
+  eightfold-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eightfold-dashboard
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    networks:
+      - eightfold-net
+
+networks:
+  eightfold-net:
+    driver: bridge
