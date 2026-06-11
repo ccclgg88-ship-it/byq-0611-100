@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useEightfoldStore } from '@/stores/eightfold'
+import { useAnalyticsStore } from '@/stores/analytics'
 import RadarChart from './RadarChart.vue'
 import DimensionSlider from './DimensionSlider.vue'
 import TrendChart from './TrendChart.vue'
 import AdvicePanel from './AdvicePanel.vue'
 import ImportExportPanel from './ImportExportPanel.vue'
+import AnalysisDrawer from './analytics/AnalysisDrawer.vue'
 import { DIMENSION_ORDER, MIN_SAVE_DIMENSIONS, DIMENSION_NAMES, DIMENSION_COLORS } from '@/constants'
 import type { DimensionKey } from '@/types'
 import { today, subtractDays } from '@/utils/date'
@@ -13,6 +15,7 @@ import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 
 const store = useEightfoldStore()
+const analyticsStore = useAnalyticsStore()
 
 const dashboardRef = ref<HTMLElement | null>(null)
 const message = ref<{ text: string; type: 'success' | 'error' | 'info' } | null>(null)
@@ -273,6 +276,9 @@ onMounted(() => {
           >
             📜 历史记录
           </button>
+          <button class="btn btn-secondary" @click="analyticsStore.openDrawer">
+            📊 周报分析
+          </button>
           <button class="btn btn-secondary" @click="exportPNG">📷 导出PNG</button>
           <button class="btn btn-secondary" @click="exportPDF">📄 导出PDF</button>
           <button
@@ -455,6 +461,8 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <AnalysisDrawer />
   </div>
 </template>
 

@@ -64,3 +64,16 @@ export interface EightfoldState {
   hasCompletedOnboarding: boolean
   activeDate: string
 }
+
+export type {
+  PeriodType,
+  PeriodRange,
+  PeriodSummary,
+  CompareResult,
+  HeatmapCell,
+  InsightItem,
+  StreakInfo,
+  InsightTemplate,
+  InsightConfig,
+  DimensionAverage
+} from './analytics'
